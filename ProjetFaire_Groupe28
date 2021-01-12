@@ -1,1 +1,245 @@
 
+#include <SPI.h>
+#include <MFRC522.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Adafruit_NeoPixel.h>
+#ifdef __AVR__
+  #include <avr/power.h>
+#endif
+
+// Préparation de 2 citations différentes pour chaque badge
+char* Citation_1[]={"Gel hydroalcoolique","peinture"};
+char* Citation_2[]={"le vase est vide","tapir"};
+int tim = 400; //valeur du temps d’attente en ms
+
+#define LED_COUNT 12
+#define LED_PIN    8
+#define RST_PIN         9           
+#define SS_PIN          10
+          
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+ 
+// Création d’une instance MFRC522 (Module RFID)
+MFRC522 mfrc522(SS_PIN, RST_PIN);   
+MFRC522::MIFARE_Key key;
+MFRC522::StatusCode status;
+
+//On définie la défintion de l’écran LCD pour un affichage lisible
+LiquidCrystal_I2C lcd(0x20,16,2);
+
+byte UID[4]; //Préparation d’une variable de lecture d’identifiants
+
+ // Identifiant des deux badges que l’on va comparer avec l’identifiant lu
+byte CARTE_BLANCHE[4] = {204, 57 , 56, 60}; 
+byte BADGE_BLEU[4] = {171,46,202,85};
+//*****************************************************************************************//
+void setup() {
+  randomSeed(analogRead(0));
+  Serial.begin(9600);                                           // Initialisation de la communication Série
+  SPI.begin();                                                  // Initialisation du bus SPI
+  mfrc522.PCD_Init();                                              // Initialisation du module MFRC522
+ 
+  // on initialise le nombre de colonnes et lignes de l’écran LCD
+  lcd.init();
+ //commande qui permet le rétroéclairage de l’écran LCD et qui aide grandement à la lisibilité      // du message affiche sur l’écran LCD
+  lcd.backlight();
+  lcd.home();
+  strip.begin();
+  strip.show();
+// commande qui aide à la lisibilité de l’affichage du LCD
+  strip.setBrightness(1);
+  for(int i=0; i<LED_COUNT; i++){
+    strip.setPixelColor(i,strip.Color(255,   255,   255)); 
+// commande qui permet de placer les pixels blancs
+    strip.show();
+  }
+}
+ //***************************************************************************
+void rainbow(int wait) {
+  // Hue of first pixel runs 5 complete loops through the color wheel.
+  // Color wheel has a range of 65536 but it's OK if we roll over, so
+  // just count from 0 to 5*65536. Adding 256 to firstPixelHue each time
+  // means we'll make 5*65536/256 = 1280 passes through this outer loop:
+  for(long firstPixelHue = 0; firstPixelHue < 5*65536; firstPixelHue += 256) {
+    for(int i=0; i<strip.numPixels(); i++) { // For each pixel in strip...
+      // Offset pixel hue by an amount to make one full revolution of the
+      // color wheel (range of 65536) along the length of the strip
+      // (strip.numPixels() steps):
+      int pixelHue = firstPixelHue + (i * 65536L / strip.numPixels());
+      // strip.ColorHSV() can take 1 or 3 arguments: a hue (0 to 65535) or
+      // optionally add saturation and value (brightness) (each 0 to 255).
+      // Here we're using just the single-argument hue variant. The result
+      // is passed through strip.gamma32() to provide 'truer' colors
+      // before assigning to each pixel:
+      strip.setPixelColor(i, strip.gamma32(strip.ColorHSV(pixelHue)));
+     }
+    strip.show(); // Update strip with new contents
+    delay(wait);  // Pause for a moment
+   }
+}
+//*****************************************************************************************//
+
+void loop() { 
+  // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
+  for (byte i = 0; i < 6; i++) key.keyByte[i] = 0xFF;
+ 
+  // On initialise les variables liées à la lecture des badges RFID
+  byte block;
+  byte len;
+  byte blockfreq;
+  byte lenfreq;
+  //-------------------------------------------
+ 
+  // Reset du programme si aucune carte n’est détectée.
+
+  if ( ! mfrc522.PICC_IsNewCardPresent()) {
+    return;
+  }
+ 
+  if ( ! mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+
+// On récupère sur les cartes l’information de fréquence de clignotement des LEDs
+
+  byte buffer1[18];
+  
+ // Choix du bloc de lecture, la fréquence recherchée se trouve dans le bloc 5
+
+  blockfreq = 5;
+  lenfreq = 18;
+ 
+
+//On gère les éventuelles erreurs de lecture et d'authentification 
+  status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, blockfreq, &key, &(mfrc522.uid));
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print(F("Authentication failed: "));
+    Serial.println(mfrc522.GetStatusCodeName(status));
+    return;
+  }
+ 
+  status = mfrc522.MIFARE_Read(blockfreq, buffer1, &lenfreq);
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print(F("Reading failed: "));
+    Serial.println(mfrc522.GetStatusCodeName(status));
+    return;
+  }
+ 
+ // On récupère la valeur souhaitée sous forme d’une chaîne de caractères
+  String valuefreq = "";
+  for (uint8_t i = 0; i < 16; i++) {
+      valuefreq += (char)buffer1[i];
+  }
+  
+
+//On enlève les espaces au début et à la fin de la chaîne de caractères
+  valuefreq.trim();
+
+//On convertit notre chaîne de caractère en entier, et on obtient la fréquence souhaitée
+int freq;
+freq = valuefreq.toInt();
+
+//Lecture de l’identifiant des badges afin de les différencier
+ 
+  //byte buffer1[18];
+ 
+// L'identifiant se trouve dans le bloc 4
+  block = 4;
+  len = 18;
+
+//On gère les éventuelles erreurs de lecture et d'authentification 
+ 
+  status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block, &key, &(mfrc522.uid));
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print(F("Authentication failed: "));
+    Serial.println(mfrc522.GetStatusCodeName(status));
+    return;
+  }
+ 
+  status = mfrc522.MIFARE_Read(block, buffer1, &len);
+  if (status != MFRC522::STATUS_OK) {
+    Serial.print(F("Reading failed: "));
+    Serial.println(mfrc522.GetStatusCodeName(status));
+    return;
+  }
+ 
+ //On lit le block 4 de la carte RFID, et on sauvegarde sa valeur dans une chaîne de caractères, on trouve l’UID du tag
+  String value = "";
+  for (uint8_t i = 0; i < 16; i++) {
+      value += (char)buffer1[i];
+  }
+  for (byte i = 0;i < 4;i++) {
+    UID[i] = mfrc522.uid.uidByte[i];
+  }
+  value.trim();
+ 
+//On affiche l’identifiant
+  Serial.println("Badge détecté");
+  Serial.println(" L'UID du tag est:");
+  for (byte i = 0; i < 4; i++) {
+  Serial.print(UID[i], HEX);
+  Serial.print(" ");
+  }
+  
+  Serial.println(value);
+
+
+Serial.println(F("\n"));
+
+// Si l'identifiant correspond à celui de la carte blanche
+
+ if (UID[0] == CARTE_BLANCHE[0]
+           && UID[1] == CARTE_BLANCHE[1]
+           && UID[2] == CARTE_BLANCHE[2]
+           && UID[3] == CARTE_BLANCHE[3]
+           && UID[4] == CARTE_BLANCHE[4])
+          {//colorwipe(M,100)  
+// qui permet d’afficher la couleur M progressivement sur une période de 100ms
+           for(int i=0; i<LED_COUNT; i++){
+            strip.setPixelColor(i,strip.Color(255,   0,   0));
+            strip.show();
+          }
+          lcd.clear();
+          Serial.println("Carte lue");
+          //colorwipe(J,100)
+// qui permet d’afficher la couleur J progressivement sur une période de 100ms
+          char* cit = Citation_1[random(0,2)]; // On sélectionne un citation aléatoire dans la liste
+          int len = strlen(cit);
+          lcd.setCursor(15,0); // set the cursor to column 15, line 0
+          for (int positionCounter1 = 0; positionCounter1 < len; positionCounter1++)
+          {
+           lcd.scrollDisplayLeft(); //Scrolls the contents of the display one space to the left.
+           lcd.print(cit[positionCounter1]); // Print a message to the LCD.
+           delay(tim); //wait {tim} microseconds
+          }}
+
+// Si l’identifiant correspond à celui du badge bleu
+
+  if (UID[0] == BADGE_BLEU[0]
+           && UID[1] == BADGE_BLEU[1]
+           && UID[2] == BADGE_BLEU[2]
+           && UID[3] == BADGE_BLEU[3]
+           && UID[4] == BADGE_BLEU[4])
+          {lcd.clear();
+          rainbow(freq);
+          Serial.println("Badge lu");
+          //colorwipe(J,100)
+          char* cit = Citation_2[random(0,2)]; // On sélectionne une citation aléatoire dans l’autre liste
+          int len = strlen(cit);
+          lcd.setCursor(15,0); // set the cursor to column 15, line 0
+          for (int positionCounter1 = 0; positionCounter1 < len; positionCounter1++)
+          {
+           lcd.scrollDisplayLeft(); //Scrolls the contents of the display one space to the left.
+           lcd.print(cit[positionCounter1]); // Print a message to the LCD.
+           delay(tim); //wait {tim} microseconds
+          }
+          }
+
+// Halt PICC
+  mfrc522.PICC_HaltA();
+//Arrêt du chiffrement sur le PCD
+  mfrc522.PCD_StopCrypto1();
+ }
+  
+
