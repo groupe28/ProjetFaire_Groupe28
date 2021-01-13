@@ -3,7 +3,7 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
-#ifdef __AVR__
+#ifdef _AVR_
   #include <avr/power.h>
 #endif
 
@@ -281,7 +281,3 @@ for(int i=0; i<LED_COUNT; i++){
 //Arrêt du chiffrement sur le PCD
   mfrc522.PCD_StopCrypto1();
  }
-
-
-
-
