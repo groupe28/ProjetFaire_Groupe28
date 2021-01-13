@@ -85,6 +85,26 @@ void rainbow(int wait) {
     delay(wait);  // Pause for a moment
    }
 }
+
+
+void writeBytesToBlock(byte blockprenom, byte buff[]) {
+status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, blockprenom, &key, &(mfrc522.uid));
+if (status != MFRC522::STATUS_OK) {
+Serial.print(F("PCD_Authenticate() failed: "));
+Serial.println(mfrc522.GetStatusCodeName(status));
+return;
+}
+else Serial.println(F("PCD_Authenticate() success: "));
+// Write block
+status = mfrc522.MIFARE_Write(blockprenom, buff, 16);
+if (status != MFRC522::STATUS_OK) {
+Serial.print(F("MIFARE_Write() failed: "));
+Serial.println(mfrc522.GetStatusCodeName(status));
+return;
+}
+else Serial.println(F("MIFARE_Write() success: "));
+}
+
 //*****************************************************************************************//
 
 void loop() { 
@@ -96,6 +116,7 @@ void loop() {
   byte len;
   byte blockfreq;
   byte lenfreq;
+
   //-------------------------------------------
  
   // Reset du programme si aucune carte n’est détectée.
@@ -107,6 +128,19 @@ void loop() {
   if ( ! mfrc522.PICC_ReadCardSerial()) {
     return;
   }
+
+
+//écriture sur la carte Arduino du prénom
+
+Serial.setTimeout(20000L);
+byte blockprenom = 16;
+byte buffr[] = {0x41,0x75,0x72,0x65,
+0x6c,0x69,0x65,0x6e,
+0x20,0x47,0x6f,0x73,
+0x73,0x65,0x20,0x20};
+writeBytesToBlock(blockprenom, buffr);  
+Serial.println(" ");
+
 
 // On récupère sur les cartes l’information de fréquence de clignotement des LEDs
 
@@ -247,5 +281,7 @@ for(int i=0; i<LED_COUNT; i++){
 //Arrêt du chiffrement sur le PCD
   mfrc522.PCD_StopCrypto1();
  }
+
+
 
 
